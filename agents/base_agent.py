@@ -1,10 +1,3 @@
-"""Shared machinery for every agent.
-
-In SKELETON mode the agents don't call Claude — each stub logs, emits a comms
-message, and passes state through. This lets the whole graph run end-to-end with
-ZERO API keys or external services. Swap `stub_produce` for `call_claude` as you
-build each agent for real (days 3-7).
-"""
 from __future__ import annotations
 import time
 from graph.state import comms, log
