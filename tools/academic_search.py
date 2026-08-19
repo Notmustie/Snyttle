@@ -4,10 +4,20 @@ Set OPENALEX_MAILTO in .env to join the polite pool (faster, more reliable).
 """
 from __future__ import annotations
 import os
+import re
 import requests
 import config
 
 BASE = "https://api.openalex.org/works"
+
+# OpenAlex's search parser can reject stray punctuation (notably "?"). Strip
+# anything that isn't alphanumeric/space before sending the query.
+_UNSAFE = re.compile(r"[^\w\s-]")
+
+
+def _sanitize_query(q: str) -> str:
+    cleaned = _UNSAFE.sub(" ", q)
+    return " ".join(cleaned.split())[:300]  # collapse whitespace, cap length
 
 
 def _abstract_from_index(inv: dict | None) -> str:
@@ -24,7 +34,7 @@ def _abstract_from_index(inv: dict | None) -> str:
 
 def search_academic(query: str, k: int = config.OPENALEX_MAX_RESULTS) -> list[dict]:
     """Search OpenAlex. Returns [{title, authors, year, doi, url, abstract}]."""
-    params = {"search": query, "per_page": k}
+    params = {"search": _sanitize_query(query), "per_page": k}
     mailto = os.getenv("OPENALEX_MAILTO")
     if mailto:
         params["mailto"] = mailto
