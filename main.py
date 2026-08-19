@@ -1,5 +1,8 @@
 """CLI runner for the skeleton. Set AUTO_APPROVE=1 to skip the HITL interrupt."""
 import os, json
+from dotenv import load_dotenv  # ADD THIS
+
+load_dotenv()  # ADD THIS — loads .env before anything else
 os.environ.setdefault("AUTO_APPROVE", "1")
 
 from graph.workflow import build_graph

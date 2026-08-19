@@ -1,4 +1,6 @@
 import os, sys
+from dotenv import load_dotenv  
+load_dotenv()
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import streamlit as st
@@ -7,6 +9,8 @@ from graph.workflow import build_graph
 from graph.state import new_state
 from agents.base_agent import estimate_cost
 import config
+
+
 
 st.set_page_config(page_title="Research Workforce", layout="wide")
 st.title("Multi-Agent Research Workforce")
