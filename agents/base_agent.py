@@ -39,18 +39,28 @@ def estimate_cost(token_usage: dict, model: str = config.AGENT_MODEL) -> float:
 
 
 def call_claude(system: str, user: str, model: str = config.AGENT_MODEL,
-                max_tokens: int = 1500):
+                max_tokens: int | None = None, effort: str | None = "medium"):
     """Real Claude call. Returns (text, input_tokens, output_tokens).
 
-    Used once you replace the stubs. Requires ANTHROPIC_API_KEY.
+    `effort` controls reasoning token spend on Claude 4.6+ via adaptive thinking.
+    Pass effort=None to disable thinking (cheapest). "high" == default/max effort.
+    max_tokens defaults from the effort tier so thinking has headroom.
+    Requires ANTHROPIC_API_KEY. Used once you replace the stubs.
     """
     if _client is None:
         raise RuntimeError("anthropic client unavailable — set ANTHROPIC_API_KEY "
                            "and `pip install anthropic`")
-    resp = _client.messages.create(
-        model=model, max_tokens=max_tokens,
-        system=system, messages=[{"role": "user", "content": user}],
-    )
+    if max_tokens is None:
+        max_tokens = config.MAX_TOKENS_BY_EFFORT.get(effort, 1500)
+
+    kwargs = dict(model=model, max_tokens=max_tokens, system=system,
+                  messages=[{"role": "user", "content": user}])
+    if effort:  # enable adaptive thinking at the requested effort level
+        kwargs["thinking"] = {"type": "adaptive"}
+        kwargs["output_config"] = {"effort": effort}
+
+    resp = _client.messages.create(**kwargs)
+    # Thinking blocks are billed as output tokens; we only read the text blocks.
     text = "".join(b.text for b in resp.content if b.type == "text")
     return text, resp.usage.input_tokens, resp.usage.output_tokens
 
