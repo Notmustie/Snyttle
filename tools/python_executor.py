@@ -1,7 +1,75 @@
-"""Sandboxed-ish Python executor (stub).
+"""Controlled Python execution for the Data Analyst.
 
-Real: run in a controlled working dir via subprocess, timeout, capture
-stdout/stderr/exit, save plots by run_id. Never exec untrusted code in prod.
+Runs generated code in a SUBPROCESS with a timeout and a scrubbed environment,
+inside a per-run working directory. Captures stdout/stderr/exit status and
+collects any chart files the code writes.
+
+NOT a security sandbox. A determined adversary can escape a subprocess. This is
+appropriate for a trusted single-user demo; production would need containers,
+seccomp, or a dedicated execution service. See ARCHITECTURE.md §15.
 """
-def run_python(code: str, run_id: str, timeout: int = 30) -> dict:
-    return {"stdout": "", "stderr": "", "exit_code": 0, "artifacts": []}
+from __future__ import annotations
+import os
+import subprocess
+import sys
+import tempfile
+
+# Env vars never exposed to generated code.
+_SECRET_PREFIXES = ("ANTHROPIC", "TAVILY", "OPENAI", "AWS", "GOOGLE", "AZURE",
+                    "HF_", "HUGGING", "OPENALEX", "API_KEY", "SECRET", "TOKEN")
+
+
+def _safe_env() -> dict:
+    """Copy the environment minus anything that looks like a credential."""
+    env = {}
+    for k, v in os.environ.items():
+        up = k.upper()
+        if any(up.startswith(p) or p in up for p in _SECRET_PREFIXES):
+            continue
+        env[k] = v
+    env["MPLBACKEND"] = "Agg"          # headless matplotlib
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    return env
+
+
+def run_python(code: str, run_id: str, timeout: int = 30,
+               workdir: str | None = None) -> dict:
+    """Execute `code`. Returns {stdout, stderr, exit_code, artifacts, timed_out}."""
+    workdir = workdir or os.path.join("artifacts", f"run_{run_id}")
+    os.makedirs(workdir, exist_ok=True)
+
+    before = set(os.listdir(workdir))
+
+    with tempfile.NamedTemporaryFile("w", suffix=".py", dir=workdir,
+                                     delete=False) as f:
+        f.write(code)
+        script = f.name
+
+    timed_out = False
+    try:
+        proc = subprocess.run(
+            [sys.executable, os.path.basename(script)],
+            cwd=workdir, env=_safe_env(), capture_output=True,
+            text=True, timeout=timeout,
+        )
+        stdout, stderr, code_rc = proc.stdout, proc.stderr, proc.returncode
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        stdout, stderr, code_rc = "", f"Execution exceeded {timeout}s timeout", -1
+    finally:
+        try:
+            os.remove(script)
+        except OSError:
+            pass
+
+    after = set(os.listdir(workdir))
+    artifacts = [os.path.join(workdir, n) for n in sorted(after - before)
+                 if n.lower().endswith((".png", ".jpg", ".svg", ".csv"))]
+
+    return {
+        "stdout": stdout[-8000:],
+        "stderr": stderr[-4000:],
+        "exit_code": code_rc,
+        "artifacts": artifacts,
+        "timed_out": timed_out,
+    }
