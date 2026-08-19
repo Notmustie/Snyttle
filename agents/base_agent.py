@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 import time
 from graph.state import comms, log
@@ -58,6 +59,16 @@ def call_claude(system: str, user: str, model: str = config.AGENT_MODEL,
     return text, resp.usage.input_tokens, resp.usage.output_tokens
 
 
+def resolve_effort(state, agent: str) -> str | None:
+    """Effort for this agent: a per-run override (from preferences) wins,
+    otherwise the per-agent default from config. Used by real agents and shown
+    in the trace so the UI toggle is meaningful even in skeleton mode."""
+    override = (state.get("preferences") or {}).get("effort_override")
+    if override in (None, "", "default"):
+        return config.effort_for(agent)
+    return override
+
+
 def stub_node(agent: str, to_agent: str, msg: str, produces: dict | None = None):
     """Build a stub node function for the skeleton.
 
@@ -68,12 +79,15 @@ def stub_node(agent: str, to_agent: str, msg: str, produces: dict | None = None)
         t0 = time.time()
         rid = state["run_id"]
         rev = state.get("revision_count", 0)
+        eff = resolve_effort(state, agent)
+        entry = log(rid, agent, f"{agent} stub ran (effort={eff})",
+                    duration=round(time.time() - t0, 4))
+        entry["effort"] = eff
         update = {
             "current_agent": agent,
             "completed_agents": [f"{agent}@{rev}"],  # cycle-stamped for revision re-runs
             "messages": [comms(agent, to_agent, "result", msg, rid)],
-            "execution_logs": [log(rid, agent, f"{agent} stub ran",
-                                   duration=round(time.time() - t0, 4))],
+            "execution_logs": [entry],
         }
         if produces:
             update.update(produces)
