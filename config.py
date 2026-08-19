@@ -2,8 +2,8 @@
 import os
 
 # ---- Models ----
-AGENT_MODEL = "claude-sonnet-4-6"           # reasoning agents
-PLANNER_MODEL = "claude-sonnet-4-6"
+AGENT_MODEL = "claude-sonnet-5"           # reasoning agents
+PLANNER_MODEL = "claude-sonnet-5"
 
 # ---- Reasoning effort (adaptive thinking) ----
 # On Claude 4.6+, token spend on reasoning is controlled by adaptive thinking
