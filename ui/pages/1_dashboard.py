@@ -35,17 +35,35 @@ if final or pending:
     for a in (final or {}).get("completed_agents", []):
         done.add(a.split("@")[0])
     current = (final or {}).get("current_agent") or "planner"
-    cols = st.columns(len(STEP_ORDER))
+    run_finished = bool(final)  # once complete/errored, unreached steps were SKIPPED, not "pending"
+
+    chips = []
     for i, step in enumerate(STEP_ORDER):
         label = STEP_LABELS[step]
         if step in done:
-            cols[i].markdown(f"✅ **{label}**")
+            icon, text_color, bg = "✅", "#3D3024", "#E7F0E3"
         elif step == current and pending:
-            cols[i].markdown(f"⏸ **{label}**")
+            icon, text_color, bg = "⏸", "#3D3024", "#F5E8CE"
         elif step == current:
-            cols[i].markdown(f"🔄 **{label}**")
+            icon, text_color, bg = "🔄", "#3D3024", "#F0E9DD"
+        elif run_finished:
+            icon, text_color, bg = "–", "#A89A87", "#FDFBF7"   # skipped this run
         else:
-            cols[i].markdown(f"⚪ {label}")
+            icon, text_color, bg = "○", "#A89A87", "#FDFBF7"   # not reached yet
+        chips.append(
+            f'<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;'
+            f'background:{bg};border:1px solid #E4D9C7;border-radius:999px;'
+            f'padding:6px 14px;font-size:14px;color:{text_color};">'
+            f'<span>{icon}</span><span style="font-weight:600;">{label}</span></div>'
+        )
+        if i < len(STEP_ORDER) - 1:
+            chips.append('<span style="color:#C9B79C;font-size:16px;">→</span>')
+
+    st.markdown(
+        f'<div style="display:flex;align-items:center;gap:10px;flex-wrap:nowrap;'
+        f'overflow-x:auto;padding:4px 0 16px 0;">{"".join(chips)}</div>',
+        unsafe_allow_html=True,
+    )
     st.divider()
 
 tabs = st.tabs(["Execution graph", "Agent trace", "Communication",
@@ -74,12 +92,27 @@ with tabs[1]:
         st.caption("No trace yet.")
 
 # ---------------------------------------------------------------- Communication
+AGENT_AVATAR = {"supervisor": "🧭", "planner": "🗂️", "research": "🔎",
+                "knowledge": "📚", "data_analyst": "📊", "critic": "🧐",
+                "writer": "✍️", "human": "🙋"}
+TYPE_LABEL = {"delegation": "delegated to", "result": "reported to",
+             "feedback": "sent feedback to", "system": "notified"}
+
 with tabs[2]:
-    if final:
-        for m in final["messages"]:
-            icon = {"delegation": "➡️", "result": "✅", "feedback": "🔁", "system": "👤"}.get(m["type"], "•")
-            st.markdown(f"{icon} `{m['from_agent']}` → `{m['to_agent']}` "
-                       f"**[{m['type']}]** {m['content']}")
+    if final and final.get("messages"):
+        msgs = final["messages"]
+        # Group into revision cycles so a long revise loop doesn't read as one
+        # undifferentiated wall of messages — a divider marks each new cycle.
+        cycle = 0
+        for i, m in enumerate(msgs):
+            if m["type"] == "feedback" and "Revision" in m["content"]:
+                cycle += 1
+                st.markdown(f"###### 🔁 Revision cycle {cycle}")
+            avatar = AGENT_AVATAR.get(m["from_agent"], "⚙️")
+            verb = TYPE_LABEL.get(m["type"], m["type"])
+            with st.chat_message(m["from_agent"], avatar=avatar):
+                st.markdown(f"**{m['from_agent']}** {verb} **{m['to_agent']}**")
+                st.caption(m["content"])
     else:
         st.caption("No communication log yet.")
 

@@ -13,6 +13,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 
 # Env vars never exposed to generated code.
 _SECRET_PREFIXES = ("ANTHROPIC", "TAVILY", "OPENAI", "AWS", "GOOGLE", "AZURE",
@@ -38,7 +39,13 @@ def run_python(code: str, run_id: str, timeout: int = 30,
     workdir = workdir or os.path.join("artifacts", f"run_{run_id}")
     os.makedirs(workdir, exist_ok=True)
 
-    before = set(os.listdir(workdir))
+    # Use a start-time watermark rather than a before/after directory diff.
+    # The revision loop can call this multiple times against the SAME workdir,
+    # and if a regenerated script reuses a chart filename (e.g. "chart.png"
+    # every cycle), a pure set-difference sees it as "already existed" and
+    # silently drops it from artifacts. mtime correctly catches both new AND
+    # overwritten files from this run.
+    run_start = time.time()
 
     with tempfile.NamedTemporaryFile("w", suffix=".py", dir=workdir,
                                      delete=False) as f:
@@ -62,9 +69,16 @@ def run_python(code: str, run_id: str, timeout: int = 30,
         except OSError:
             pass
 
-    after = set(os.listdir(workdir))
-    artifacts = [os.path.join(workdir, n) for n in sorted(after - before)
-                 if n.lower().endswith((".png", ".jpg", ".svg", ".csv"))]
+    artifacts = []
+    for n in sorted(os.listdir(workdir)):
+        if not n.lower().endswith((".png", ".jpg", ".svg", ".csv")):
+            continue
+        path = os.path.join(workdir, n)
+        try:
+            if os.path.getmtime(path) >= run_start - 0.5:  # small clock-skew buffer
+                artifacts.append(path)
+        except OSError:
+            continue
 
     return {
         "stdout": stdout[-8000:],

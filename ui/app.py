@@ -167,6 +167,17 @@ if final:
         with st.container(border=True):
             st.markdown(final["final_report"])
 
+            # The Writer's markdown text never embeds images — render the
+            # actual chart files here so the in-app preview matches the PDF.
+            charts = [c for c in (final.get("analysis_results") or {}).get("chart_paths", [])
+                     if os.path.exists(c)]
+            if charts:
+                st.markdown("**Charts & Figures**")
+                cols = st.columns(2)
+                for i, path in enumerate(charts):
+                    label = os.path.basename(path).rsplit(".", 1)[0].replace("_", " ").title()
+                    cols[i % 2].image(path, caption=label, use_container_width=True)
+
         dl1, dl2 = st.columns(2)
         pdf_path = os.path.join("artifacts", f"report_{final['run_id']}.pdf")
         try:
