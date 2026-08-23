@@ -1,14 +1,18 @@
 """Home page: user input, HITL approval, final report + PDF download.
 
-Everything else (execution graph, trace, comms, memory, logs/cost, charts) lives
-on the Dashboard page. Session state (graph/final/pending) is shared across
-Streamlit's multipage app automatically, so the running checkpointer survives
-navigating between pages.
-Run:  streamlit run ui/app.py
+CRITICAL: load_dotenv() must run before graph.workflow is imported — that
+import chain pulls in agents.base_agent, which constructs the Anthropic client
+ONCE at import time. If the API key isn't in os.environ yet when that happens,
+the client is permanently built with no key for the life of this process; a
+later .env edit will not fix it without a full `streamlit run` restart.
 """
-import os, sys, json
+import os, sys
+from dotenv import load_dotenv
+load_dotenv()
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+import json
 import streamlit as st
 from langgraph.types import Command
 from graph.workflow import build_graph
@@ -47,7 +51,7 @@ def _resume(decision, edited_plan=None):
     result = graph.invoke(
         Command(resume={"decision": decision, "edited_plan": edited_plan}), cfg)
     intr = result.get("__interrupt__")
-    if intr:  # a revision loop could in principle re-pause; handle it, don't crash
+    if intr:
         payload = intr[0].value if isinstance(intr, (list, tuple)) else intr.value
         st.session_state.pending = {"cfg": cfg, "payload": payload}
         st.session_state.final = None
@@ -74,14 +78,18 @@ st.caption("Ask a research question, optionally attach data or documents, and "
            "get a cited report — built by a Supervisor coordinating six "
            "specialist agents.")
 
-# ---------------------------------------------------------------- Input form
 with st.form("run_form", clear_on_submit=False):
     query = st.text_area("Research question", height=90,
                          placeholder="What factors are associated with customer churn?")
     up = st.file_uploader("Datasets / documents (optional)",
                           accept_multiple_files=True,
                           type=["csv", "xlsx", "xls", "json", "parquet", "pdf", "txt", "md"])
-    auto = st.toggle("Auto-approve the research plan (skip human review)", value=False)
+
+    require_approval = st.toggle(
+        "Require human approval of the plan (HITL)", value=False,
+        help="Off (default): the plan is auto-approved and the run goes "
+             "straight through. On: the run pauses after planning and waits "
+             "for you to approve, edit, or reject the plan below.")
 
     with st.expander("Advanced settings"):
         c1, c2 = st.columns(2)
@@ -107,7 +115,7 @@ if submitted:
             files.append({"path": path, "type": kind, "name": f.name})
 
         prefs = {
-            "auto_approve": auto,
+            "auto_approve": not require_approval,
             "effort_override": None if effort_choice == "Per-agent default" else effort_choice,
             "model_override": None if model_choice == "Per-agent default" else model_choice,
         }
@@ -117,35 +125,31 @@ if submitted:
             _run_until_pause(state, cfg)
         st.rerun()
 
-# ---------------------------------------------------------------- HITL approval
 pending = st.session_state.get("pending")
 if pending:
     st.divider()
-    st.warning("⏸ **Human review required** — approve, edit, or reject the "
-               "research plan before the workforce continues.")
+    st.warning("⏸ **Human review required** — review the plan below, edit it "
+               "if you'd like, then approve or reject.")
     plan = pending["payload"].get("plan", {})
+    original_text = json.dumps(plan, indent=2)
     edited = st.text_area("Research plan (JSON — edit before approving if needed)",
-                          value=json.dumps(plan, indent=2), height=220)
-    c1, c2, c3 = st.columns(3)
+                          value=original_text, height=220)
+    c1, c2 = st.columns(2)
     if c1.button("✅ Approve", type="primary", use_container_width=True):
-        with st.spinner("Resuming..."):
-            _resume("approve")
-        st.rerun()
-    if c2.button("✏️ Approve edited plan", use_container_width=True):
         try:
             parsed = json.loads(edited)
         except Exception:
-            st.error("The edited plan is not valid JSON.")
+            st.error("The plan JSON is invalid — fix it or leave it unchanged, then approve.")
         else:
-            with st.spinner("Resuming with your edits..."):
-                _resume("edit", edited_plan=parsed)
+            was_edited = edited.strip() != original_text.strip()
+            with st.spinner("Resuming..."):
+                _resume("edit" if was_edited else "approve", edited_plan=parsed)
             st.rerun()
-    if c3.button("❌ Reject", use_container_width=True):
+    if c2.button("❌ Reject", use_container_width=True):
         with st.spinner("Stopping the run..."):
             _resume("reject")
         st.rerun()
 
-# ---------------------------------------------------------------- Final report
 final = st.session_state.get("final")
 if final:
     st.divider()
@@ -154,7 +158,7 @@ if final:
         st.success(f"Run complete — {len(final.get('completed_agents', []))} agent step(s), "
                    f"${final.get('estimated_cost', 0):.4f} estimated cost.")
     elif status == "ERROR":
-        st.error("The plan was rejected or the run ended in an error state.")
+        st.error("The plan was rejected, so the run stopped before producing a report.")
     else:
         st.info(f"Status: {status}")
 

@@ -108,6 +108,7 @@ def build_graph(checkpointer=None):
         "critic": "critic",
         "revise": "revise",
         "writer": "writer",
+        "stop": END,
     })
 
     g.add_edge("planner", "human_approval")

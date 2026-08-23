@@ -39,6 +39,10 @@ def route_next(state) -> str:
     Completions are stamped `agent@<revision_count>`, so a revision bump makes
     every check see the specialist as not-yet-done for the new cycle and re-runs it.
     """
+    decisions = state.get("human_decisions", [])
+    if decisions and decisions[-1].get("decision") == "reject":
+        return "stop"
+
     if not state.get("research_plan"):
         return "planner"
 

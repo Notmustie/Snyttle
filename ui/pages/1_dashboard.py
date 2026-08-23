@@ -3,6 +3,8 @@ data analysis charts, and logs/cost. Reads the same session state Home writes
 to — start a run on Home first.
 """
 import os, sys
+from dotenv import load_dotenv
+load_dotenv()
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 import streamlit as st
