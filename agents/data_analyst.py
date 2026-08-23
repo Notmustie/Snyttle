@@ -18,11 +18,18 @@ CODEGEN_SYSTEM = (
     "You write Python data-analysis scripts. Output ONLY executable Python — no "
     "prose, no markdown fences. A variable DATA_PATH is ALREADY DEFINED for you; "
     "use pd.read_csv(DATA_PATH) for CSV or pd.read_excel(DATA_PATH) for Excel, "
-    "etc. — Pandas auto-detects many formats. Use matplotlib with the Agg backend; "
-    "save each plot with plt.savefig('<name>.png') into the current working "
-    "directory; print concise findings with print(). No network calls, no writes "
-    "outside the working directory, no input(). Keep it under 60 lines and make "
-    "it robust to missing or non-numeric columns."
+    "etc. — Pandas auto-detects many formats. Perform any cleaning the data needs "
+    "(drop exact duplicates, handle missing values sensibly) BEFORE analysis, and "
+    "report EVERY cleaning action with print('CLEANING: <what, and how many rows/"
+    "values affected>') — one line per action. Always report at least one CLEANING "
+    "line, even if it is print('CLEANING: no cleaning required'). Report each "
+    "analytical insight with print('FINDING: <insight>') — one per line. Use "
+    "matplotlib with the Agg backend; save EVERY plot with "
+    "plt.savefig('<descriptive_name>.png', dpi=110, bbox_inches='tight') into the "
+    "current working directory — produce at least 2 charts visualizing the "
+    "question's key relationships. No network calls, no writes outside the working "
+    "directory, no input(). Keep it under 80 lines and make it robust to missing "
+    "or non-numeric columns."
 )
 
 # Injected above every generated script so the path is always correct and the
@@ -117,6 +124,7 @@ def data_analyst_node(state):
 
     # --- Stage 2: Claude writes analysis code, executor runs it ---
     analysis = {"stats": info.get("describe", {}), "findings": [],
+                "cleaning_notes": [],
                 "chart_paths": [], "code": "", "stdout": ""}
     feedback = [f["issue"] for f in state.get("critic_feedback", [])
                 if f.get("target_agent") == "data_analyst"]
@@ -137,8 +145,17 @@ def data_analyst_node(state):
         res = run_python(code, run_id=rid, timeout=60)
         analysis["code"] = code
         analysis["stdout"] = res["stdout"]
-        analysis["chart_paths"] = res["artifacts"]
-        analysis["findings"] = [l for l in res["stdout"].splitlines() if l.strip()][:20]
+        analysis["chart_paths"] = [a for a in res["artifacts"]
+                                   if a.lower().endswith((".png", ".jpg", ".svg"))]
+        lines = [l.strip() for l in res["stdout"].splitlines() if l.strip()]
+        analysis["cleaning_notes"] = [l[len("CLEANING:"):].strip() for l in lines
+                                      if l.upper().startswith("CLEANING:")]
+        analysis["findings"] = [l[len("FINDING:"):].strip() for l in lines
+                                if l.upper().startswith("FINDING:")]
+        # Fallback: if the model ignored the prefixes, keep raw output so nothing
+        # is silently lost.
+        if not analysis["findings"] and not analysis["cleaning_notes"]:
+            analysis["findings"] = lines[:20]
 
         if res["exit_code"] == 0:
             logs.append(log(rid, "data_analyst",

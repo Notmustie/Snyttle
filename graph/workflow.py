@@ -30,14 +30,17 @@ except Exception:  # noqa: BLE001
 def human_approval_node(state):
     """The single HITL checkpoint: approve/modify/reject the plan.
 
-    In AUTO_APPROVE mode (CLI/tests) it records an automatic approval. In the
-    Streamlit app, `interrupt()` pauses the graph; the UI resumes with a decision
-    payload: {"decision": "approve"|"edit"|"reject", "edited_plan": {...}?}.
+    auto_approve is a PER-RUN preference (state["preferences"]["auto_approve"]),
+    NOT the config constant: config.AUTO_APPROVE is bound once at import time,
+    and Streamlit's long-lived process means the UI toggle would never take
+    effect if we read the constant here. Falls back to config.AUTO_APPROVE so
+    the CLI/tests (which set the env var) still work.
     """
     rid = state["run_id"]
     updates = {"status": Status.RESEARCHING}
+    auto = (state.get("preferences") or {}).get("auto_approve", config.AUTO_APPROVE)
 
-    if config.AUTO_APPROVE or interrupt is None:
+    if auto or interrupt is None:
         decision = {"checkpoint": "plan_approval", "decision": "approve", "auto": True}
     else:
         payload = interrupt({"checkpoint": "plan_approval",

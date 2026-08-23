@@ -42,7 +42,7 @@ def critic_node(state):
     web = state.get("research_results", [])
     lit = state.get("literature_results", [])
     rag = state.get("retrieved_context", [])
-    ana = state.get("analysis_results", {})
+    ana = state.get("analysis_results") or {}
 
     payload = {
         "question": state["user_query"],

@@ -15,11 +15,11 @@ DEFAULT_EFFORT = "medium"
 
 # Spend reasoning where it pays off; stay cheap where it doesn't.
 AGENT_EFFORT = {
-    "planner": "high",         # task decomposition benefits from reasoning
-    "research": "low",         # mostly retrieval + light synthesis
-    "knowledge": "low",        # retrieval + provenance
+    "planner": "medium",         # task decomposition benefits from reasoning
+    "research": "medium",         # mostly retrieval + light synthesis
+    "knowledge": "medium",        # retrieval + provenance
     "data_analyst": "medium",  # interpreting stats
-    "critic": "high",          # methodology / consistency checks benefit most
+    "critic": "medium",          # methodology / consistency checks benefit most
     "writer": "medium",        # structured synthesis
 }
 
