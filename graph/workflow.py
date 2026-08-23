@@ -15,6 +15,10 @@ from agents.knowledge import knowledge_node
 from agents.data_analyst import data_analyst_node
 from agents.critic import critic_node
 from agents.writer import writer_node
+
+from graph.state import ResearchState, comms, log, Status
+from memory.database import persist_run
+
 import config
 
 try:
@@ -68,6 +72,17 @@ def revise_node(state):
         "execution_logs": [log(rid, "supervisor", f"revision {rev}")],
     }
 
+def persist_node(state):
+    """Terminal node: write the completed run to SQLite. Best-effort."""
+    rid = state["run_id"]
+    from agents.base_agent import estimate_cost
+    cost = estimate_cost(state.get("token_usage", {}))
+    ok = persist_run({**state, "estimated_cost": cost})
+    return {
+        "estimated_cost": cost,
+        "execution_logs": [log(rid, "system", "run persisted to sqlite",
+                               status="ok" if ok else "degraded", tool="sqlite")],
+    }
 
 def build_graph(checkpointer=None):
     g = StateGraph(ResearchState)
@@ -81,6 +96,7 @@ def build_graph(checkpointer=None):
     g.add_node("critic", critic_node)
     g.add_node("revise", revise_node)
     g.add_node("writer", writer_node)
+    g.add_node("persist", persist_node)
 
     g.add_edge(START, "supervisor")
 
@@ -100,7 +116,8 @@ def build_graph(checkpointer=None):
     for n in ("research", "knowledge", "data_analyst", "critic", "revise"):
         g.add_edge(n, "supervisor")
 
-    g.add_edge("writer", END)
+    g.add_edge("writer", "persist")
+    g.add_edge("persist", END)
 
     return g.compile(checkpointer=checkpointer or MemorySaver())
 

@@ -7,7 +7,7 @@ at 2 retries). Otherwise passes with INFO-level observations.
 from __future__ import annotations
 import json
 from graph.state import comms, log, feedback
-from agents.base_agent import call_claude, add_usage, resolve_effort
+from agents.base_agent import call_claude, add_usage, resolve_effort, resolve_model
 import config
 
 CRITIC_SYSTEM = (
@@ -33,6 +33,7 @@ def critic_node(state):
     rid = state["run_id"]
     rev = state.get("revision_count", 0)
     eff = resolve_effort(state, "critic")
+    model = resolve_model(state, "critic")
     logs = []
     token_usage = state.get("token_usage", {})
 
@@ -62,8 +63,7 @@ def critic_node(state):
             "Review for quality, conflicts, gaps, and methodology issues.")
 
     try:
-        text, itok, otok = call_claude(CRITIC_SYSTEM, user,
-                                       model=config.AGENT_MODEL, effort=eff)
+        text, itok, otok = call_claude(CRITIC_SYSTEM, user, model=model, effort=eff)
         fb_list = json.loads(_strip_fences(text))
         if not isinstance(fb_list, list):
             fb_list = []

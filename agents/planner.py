@@ -1,6 +1,6 @@
 import json
 from graph.state import comms, log, Status
-from agents.base_agent import call_claude, add_usage, resolve_effort
+from agents.base_agent import call_claude, add_usage, resolve_effort, resolve_model
 import config
 
 PLANNER_SYSTEM = (
@@ -32,6 +32,7 @@ def _fallback_plan(query: str) -> dict:
 def planner_node(state):
     rid = state["run_id"]
     eff = resolve_effort(state, "planner")
+    model = resolve_model(state, "planner") 
     files = [f.get("name") for f in state.get("uploaded_files", [])]
     user = (f"Research question: {state['user_query']}\n"
             f"Uploaded files: {files}\n"
@@ -39,7 +40,7 @@ def planner_node(state):
             "Produce the plan as JSON.")
     try:
         text, itok, otok = call_claude(PLANNER_SYSTEM, user,
-                                       model=config.PLANNER_MODEL, effort=eff)
+                                       model=model, effort=eff)   
         plan = json.loads(_strip_fences(text))
         token_usage = add_usage(state.get("token_usage", {}), "planner", itok, otok)
         logs = [log(rid, "planner", "plan drafted (llm)", tool="claude")]

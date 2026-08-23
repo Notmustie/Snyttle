@@ -8,6 +8,10 @@ from langgraph.types import Command
 from graph.workflow import build_graph
 from graph.state import new_state
 from agents.base_agent import estimate_cost
+from agents.base_agent import estimate_cost
+from memory.database import list_runs, get_run, db_stats
+import config
+
 import config
 
 
@@ -27,6 +31,7 @@ def _finish(result):
 
 
 def _run_until_pause(state, cfg):
+    st.session_state.last_cfg = cfg
     result = graph.invoke(state, cfg)
     intr = result.get("__interrupt__")
     if intr:
@@ -36,6 +41,21 @@ def _run_until_pause(state, cfg):
     else:
         _finish(result)
 
+def _retry():
+    """Re-invoke the graph on the SAME thread_id. LangGraph resumes from the last
+    checkpoint, so a run that failed mid-way retries the failed step rather than
+    restarting from scratch."""
+    last = st.session_state.get("last_cfg")
+    if not last:
+        return
+    result = graph.invoke(None, last)
+    intr = result.get("__interrupt__")
+    if intr:
+        payload = intr[0].value if isinstance(intr, (list, tuple)) else intr.value
+        st.session_state.pending = {"cfg": last, "payload": payload}
+        st.session_state.final = None
+    else:
+        _finish(result)
 
 def _resume(decision, edited_plan=None):
     cfg = st.session_state.pending["cfg"]
@@ -56,6 +76,22 @@ with st.sidebar:
         help="Override every agent's effort for this run. Higher effort = more "
              "reasoning tokens = higher cost.")
     start = st.button("Start", type="primary")
+
+    st.divider()
+    st.caption("Run controls")
+    if st.button("Retry last run", disabled=not st.session_state.get("last_cfg")):
+        with st.spinner("Retrying from last checkpoint..."):
+            _retry()
+        st.rerun()
+    if st.button("Clear session"):
+        for k in ("final", "pending", "last_cfg"):
+            st.session_state.pop(k, None)
+        st.rerun()
+    st.caption("Pause is handled by the plan-approval checkpoint: turn off "
+               "auto-approve and the graph halts there until you decide.")
+
+    
+    
 
 if start:
     os.environ["AUTO_APPROVE"] = "1" if auto else "0"
@@ -126,9 +162,46 @@ with tabs[3]:
             st.write(f"`{m['from_agent']}` → `{m['to_agent']}` **[{m['type']}]** {m['content']}")
 
 with tabs[4]:
+    st.subheader("Persistent memory (SQLite)")
+    stats = db_stats()
+    if stats:
+        c = st.columns(len(stats))
+        for i, (k, v) in enumerate(stats.items()):
+            c[i].metric(k, v)
+
+    runs = list_runs()
+    if runs:
+        st.caption("Past runs")
+        st.dataframe(runs, use_container_width=True)
+        pick = st.selectbox("Inspect a run", [r["run_id"] for r in runs])
+        if pick:
+            rec = get_run(pick)
+            st.write(f"**Query:** {rec.get('query')}  |  **Status:** {rec.get('status')}"
+                     f"  |  **Revisions:** {rec.get('revision_count')}")
+            m1, m2 = st.columns(2)
+            with m1:
+                st.caption("Messages"); st.dataframe(rec.get("messages", []),
+                                                     use_container_width=True)
+            with m2:
+                st.caption("Human decisions"); st.dataframe(rec.get("decisions", []),
+                                                            use_container_width=True)
+    else:
+        st.info("No persisted runs yet — complete a run to populate memory.")
+
+    st.divider()
+    st.subheader("Knowledge base (Chroma)")
+    try:
+        from memory.vector_store import VectorStore
+        st.metric("Indexed chunks", VectorStore().count())
+    except Exception as e:  # noqa: BLE001
+        st.caption(f"Vector store unavailable: {e}")
+
+    st.divider()
+    st.subheader("Live state (current run)")
     if final:
-        st.subheader("Current ResearchState")
         st.json({k: v for k, v in final.items() if k != "final_report"})
+    else:
+        st.caption("No active run.")
 
 with tabs[5]:
     if final and final.get("analysis_results"):

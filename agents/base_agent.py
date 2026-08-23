@@ -24,12 +24,17 @@ def add_usage(token_usage: dict, agent: str, in_tok: int, out_tok: int) -> dict:
     return tu
 
 
-def estimate_cost(token_usage: dict, model: str = config.AGENT_MODEL) -> float:
-    """Derive an ESTIMATED USD cost from the price table. Label as estimate in UI."""
-    price = config.price_for(model)
-    total = token_usage.get("total", {"input": 0, "output": 0})
-    return round(total["input"] / 1e6 * price["input"]
-                 + total["output"] / 1e6 * price["output"], 6)
+def estimate_cost(token_usage: dict) -> float:
+    """Sum ESTIMATED cost per agent, each priced at its own resolved model."""
+    total = 0.0
+    for agent, counts in token_usage.items():
+        if agent == "total":
+            continue
+        model = config.model_for(agent)
+        price = config.price_for(model)
+        total += counts.get("input", 0) / 1e6 * price["input"]
+        total += counts.get("output", 0) / 1e6 * price["output"]
+    return round(total, 6)
 
 
 def call_claude(system: str, user: str, model: str = config.AGENT_MODEL,
@@ -58,6 +63,13 @@ def call_claude(system: str, user: str, model: str = config.AGENT_MODEL,
     text = "".join(b.text for b in resp.content if b.type == "text")
     return text, resp.usage.input_tokens, resp.usage.output_tokens
 
+def resolve_model(state, agent: str) -> str:
+    """Model for this agent: a per-run override (from preferences) wins,
+    otherwise the per-agent default from config."""
+    override = (state.get("preferences") or {}).get("model_override")
+    if override in (None, "", "default"):
+        return config.model_for(agent)
+    return override
 
 def resolve_effort(state, agent: str) -> str | None:
     """Effort for this agent: a per-run override (from preferences) wins,

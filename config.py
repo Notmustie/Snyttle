@@ -2,8 +2,8 @@
 import os
 
 # ---- Models ----
-AGENT_MODEL = "claude-sonnet-5"           # reasoning agents
-PLANNER_MODEL = "claude-sonnet-5"
+AGENT_MODEL = "claude-sonnet-4-6"           # reasoning agents
+PLANNER_MODEL = "claude-sonnet-4-6"
 
 # ---- Reasoning effort (adaptive thinking) ----
 # On Claude 4.6+, token spend on reasoning is controlled by adaptive thinking
@@ -23,6 +23,23 @@ AGENT_EFFORT = {
     "writer": "medium",        # structured synthesis
 }
 
+# ---- Per-agent model selection ----
+# Mirrors AGENT_EFFORT: mix models the same way you mix effort. Opus is ~1.7x
+# Sonnet's price on both input and output, so reserve it for agents where
+# reasoning quality visibly changes the output.
+AGENT_MODEL_MAP = {
+    "planner": "claude-opus-4-8",      # decomposition benefits from stronger reasoning
+    "research": "claude-sonnet-4-6",   # retrieval + light synthesis — Sonnet is enough
+    "knowledge": "claude-sonnet-4-6",  # not currently an LLM call, but set for consistency
+    "data_analyst": "claude-sonnet-4-6",
+    "critic": "claude-opus-4-8",       # methodology/consistency checks benefit most
+    "writer": "claude-sonnet-4-6",     # structured synthesis, not deep reasoning
+}
+
+
+def model_for(agent: str) -> str:
+    return AGENT_MODEL_MAP.get(agent, AGENT_MODEL)
+
 # Give higher-effort agents more headroom so thinking doesn't crowd out the answer.
 MAX_TOKENS_BY_EFFORT = {"low": 1500, "medium": 3000, "high": 6000, None: 1500}
 
@@ -34,6 +51,7 @@ def effort_for(agent: str) -> str | None:
 # ---- Price table (USD per 1M tokens) — used only for ESTIMATED cost display ----
 PRICE_TABLE = {
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
+    "claude-opus-4-8": {"input": 5.00, "output": 25.00},
 }
 
 # ---- Control constants ----

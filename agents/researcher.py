@@ -7,7 +7,7 @@ Claude then extracts structured claims, each tied to a source URL.
 from __future__ import annotations
 import json
 from graph.state import comms, log
-from agents.base_agent import call_claude, add_usage, resolve_effort
+from agents.base_agent import call_claude, add_usage, resolve_effort, resolve_model
 from tools.web_search import search_web
 from tools.academic_search import search_academic
 import config
@@ -43,6 +43,7 @@ def researcher_node(state):
     rid = state["run_id"]
     rev = state.get("revision_count", 0)
     eff = resolve_effort(state, "research")
+    model = resolve_model(state, "research")
     logs, errors = [], []
     web_hits: list[dict] = []
     lit: list[dict] = []
@@ -76,8 +77,7 @@ def researcher_node(state):
         user = (f"Research question: {state['user_query']}\n\n"
                 f"Search results:\n{payload}\n\nExtract the evidence as JSON.")
         try:
-            text, itok, otok = call_claude(EXTRACT_SYSTEM, user,
-                                           model=config.AGENT_MODEL, effort=eff)
+            text, itok, otok = call_claude(EXTRACT_SYSTEM, user, model=model, effort=eff)
             parsed = json.loads(_strip_fences(text))
             if isinstance(parsed, list):
                 results = [r for r in parsed if isinstance(r, dict) and r.get("source_url")]

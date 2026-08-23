@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import os
 from graph.state import comms, log
-from agents.base_agent import call_claude, add_usage, resolve_effort
+from agents.base_agent import call_claude, add_usage, resolve_effort, resolve_model
 from tools.python_executor import run_python
 import config
 
@@ -81,6 +81,7 @@ def data_analyst_node(state):
     rid = state["run_id"]
     rev = state.get("revision_count", 0)
     eff = resolve_effort(state, "data_analyst")
+    model = resolve_model(state, "data_analyst")
     logs, errors = [], []
     token_usage = state.get("token_usage", {})
 
@@ -127,8 +128,7 @@ def data_analyst_node(state):
                 f"Rows: {info['shape'][0]}\n"
                 + (f"Address this critic feedback: {feedback}\n" if feedback else "")
                 + "Write the analysis script body.")
-        raw, itok, otok = call_claude(CODEGEN_SYSTEM, user,
-                                      model=config.AGENT_MODEL, effort=eff)
+        raw, itok, otok = call_claude(CODEGEN_SYSTEM, user, model=model, effort=eff)
         body = _strip_path_assignment(_strip_fences(raw))
         code = PRELUDE.format(data_path=os.path.abspath(ds["path"])) + body
         token_usage = add_usage(token_usage, "data_analyst", itok, otok)

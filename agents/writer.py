@@ -6,7 +6,7 @@ report organized by the plan's structure, with inline citations to sources.
 from __future__ import annotations
 import json
 from graph.state import comms, log, Status
-from agents.base_agent import call_claude, add_usage, resolve_effort
+from agents.base_agent import call_claude, add_usage,resolve_effort, resolve_model
 import config
 
 WRITER_SYSTEM = (
@@ -34,6 +34,8 @@ def writer_node(state):
     rid = state["run_id"]
     logs = []
     token_usage = state.get("token_usage", {})
+    eff = resolve_effort(state, "writer")
+    model = resolve_model(state, "writer")
 
     # Assemble all evidence for the Writer
     plan = state.get("research_plan") or {}
@@ -87,8 +89,7 @@ def writer_node(state):
             "Write the report incorporating all evidence with citations.")
 
     try:
-        report, itok, otok = call_claude(WRITER_SYSTEM, user,
-                                        model=config.AGENT_MODEL, effort=eff)
+        report, itok, otok = call_claude(WRITER_SYSTEM, user, model=model, effort=eff)
         token_usage = add_usage(token_usage, "writer", itok, otok)
         logs.append(log(rid, "writer", "report generated", tool="claude"))
     except Exception as e:  # noqa: BLE001 — fallback to a stub report
