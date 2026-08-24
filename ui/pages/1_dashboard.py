@@ -78,11 +78,26 @@ with tabs[0]:
         status_line = "**Status:** paused for plan approval"
     if status_line:
         st.markdown(status_line)
+
+    legend = ("🟢 done &nbsp;&nbsp; 🟡 current / paused &nbsp;&nbsp; "
+              "⚪ skipped this run &nbsp;&nbsp; 🔘 not yet reached &nbsp;&nbsp; "
+              "🟤 supervisor (hub — runs every cycle)")
+    st.caption(legend)
+
     try:
-        png = graph.get_graph().draw_mermaid_png()
-        st.image(png, caption="Compiled LangGraph workflow", use_container_width=True)
-    except Exception:
-        st.code(graph.get_graph().draw_mermaid(), language="mermaid")
+        from langchain_core.runnables.graph_mermaid import draw_mermaid_png
+        from ui.graph_viz import build_run_mermaid
+        mtext = build_run_mermaid(final, pending)
+        png = draw_mermaid_png(mtext)
+        st.image(png, caption="This run's execution path — colored by what actually ran",
+                 use_container_width=True)
+    except Exception as e:  # noqa: BLE001 — network to the render API can fail
+        st.warning(f"Couldn't render the diagram image ({e}); showing raw diagram source.")
+        try:
+            from ui.graph_viz import build_run_mermaid
+            st.code(build_run_mermaid(final, pending), language="mermaid")
+        except Exception:
+            st.code(graph.get_graph().draw_mermaid(), language="mermaid")
 
 # ---------------------------------------------------------------- Agent trace
 with tabs[1]:

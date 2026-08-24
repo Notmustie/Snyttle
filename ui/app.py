@@ -128,18 +128,39 @@ if submitted:
 pending = st.session_state.get("pending")
 if pending:
     st.divider()
-    st.warning("⏸ **Human review required** — review the plan below, edit it "
-               "if you'd like, then approve or reject.")
+    st.warning("⏸ **Human review required** — review the plan below, then "
+               "approve or reject. Need to change it? Open **Edit as JSON** below.")
     plan = pending["payload"].get("plan", {})
     original_text = json.dumps(plan, indent=2)
-    edited = st.text_area("Research plan (JSON — edit before approving if needed)",
-                          value=original_text, height=220)
+
+    PLAN_SECTIONS = [
+        ("objectives", "🎯 Objectives"),
+        ("subtasks", "🧩 Subtasks"),
+        ("evidence_needs", "📌 Evidence needed"),
+        ("success_criteria", "✅ Success criteria"),
+    ]
+    with st.container(border=True):
+        for key, heading in PLAN_SECTIONS:
+            items = plan.get(key)
+            st.markdown(f"**{heading}**")
+            if isinstance(items, list) and items:
+                for item in items:
+                    st.markdown(f"- {item}")
+            elif items:
+                st.markdown(str(items))
+            else:
+                st.caption("— none specified —")
+
+    with st.expander("✏️ Edit as JSON (advanced)"):
+        edited = st.text_area("Research plan JSON", value=original_text,
+                              height=220, label_visibility="collapsed")
+
     c1, c2 = st.columns(2)
     if c1.button("✅ Approve", type="primary", use_container_width=True):
         try:
             parsed = json.loads(edited)
         except Exception:
-            st.error("The plan JSON is invalid — fix it or leave it unchanged, then approve.")
+            st.error("The plan JSON is invalid — fix it in the editor above, then approve.")
         else:
             was_edited = edited.strip() != original_text.strip()
             with st.spinner("Resuming..."):
