@@ -100,6 +100,15 @@ with st.form("run_form", clear_on_submit=False):
 
     submitted = st.form_submit_button("Run", type="primary", use_container_width=True)
 
+if st.session_state.get("last_cfg") and not st.session_state.get("pending"):
+    with st.expander("Run controls"):
+        st.caption("If the last run stalled on a tool error, retry resumes from the "
+                   "last checkpoint rather than starting over.")
+        if st.button("🔁 Retry last run"):
+            with st.spinner("Retrying..."):
+                _retry()
+            st.rerun()
+
 if submitted:
     if not query.strip():
         st.error("Enter a research question first.")
